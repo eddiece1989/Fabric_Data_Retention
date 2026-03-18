@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "DataPipeline",
+    "displayName": "retention_reporting_pipeline"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "756e5869-5627-aad0-4d6c-ed4420a58b97"
+  }
+}
