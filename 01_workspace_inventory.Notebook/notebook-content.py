@@ -127,14 +127,10 @@ print("✅ Utilities loaded.")
 
 # CELL ********************
 
-# ── Load retention config for default retention periods ──
-print("🔄 Loading retention policies config...")
-policies_config = load_json_config(config_lakehouse_path, "retention_policies.json")
-
-# Build a lookup: item_type -> retention_days
-# Pull defaults from auto_discovery, then overlay any explicit per-type settings
-auto_disc = policies_config.get("auto_discovery", {})
-default_retention_days = auto_disc.get("default_retention", {}).get("period_days", 90)
+# ── Retention period configuration ──
+# This is the SINGLE SOURCE OF TRUTH for retention days.
+# Change this value for demo vs production. Customize per type below.
+default_retention_days = 10
 
 # You can customize retention per object type here
 RETENTION_DAYS_BY_TYPE = {
