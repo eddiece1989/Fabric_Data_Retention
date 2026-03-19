@@ -48,20 +48,19 @@
 # CELL ********************
 
 # ── Parameters ──
-inventory_table   = "workspace_inventory"       # From notebook 05
-activity_table    = "activity_last_modified"     # From notebook 06
+inventory_table   = "workspace_inventory"       # From notebook 01
+activity_table    = "activity_last_modified"     # From notebook 02
 config_table      = "retention_config"           # Output: one row per item type
 readiness_table   = "retention_readiness"        # Output: final joined readiness report
 
-# >>> DEMO: Set all retention to 2 days so items appear overdue <<<
-# >>> FOR PRODUCTION: set each type to the client's actual policy  <<<
-default_retention_days = 10
+# Retention days are controlled by Notebook 01 Cell 4 (single source of truth).
+# This notebook reads retention_period_days from the workspace_inventory table.
 
 print(f"📋 Config table:     {config_table}")
 print(f"📋 Readiness table:  {readiness_table}")
 print(f"📋 Inventory source: {inventory_table}")
 print(f"📋 Activity source:  {activity_table}")
-print(f"📋 Default retention: {default_retention_days} day(s)  ← DEMO setting")
+print(f"📋 Retention days:   controlled by Notebook 01 Cell 4")
 
 # METADATA ********************
 
@@ -78,7 +77,7 @@ print(f"📋 Default retention: {default_retention_days} day(s)  ← DEMO settin
 
 # ── Discover all item types from notebook 01's inventory table ──
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, count, lit
+from pyspark.sql.functions import col, count, lit, first
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -99,17 +98,18 @@ df_inv = spark.table(inventory_table).filter(
 )
 total_items = df_inv.count()
 
-# Get distinct item types with counts
+# Get distinct item types with counts AND retention_period_days from NB01
 df_types = df_inv.groupBy("item_type").agg(
-    count("*").alias("item_count")
+    count("*").alias("item_count"),
+    first("retention_period_days").alias("retention_days")
 ).orderBy(col("item_count").desc())
 
 item_types = df_types.collect()
 
 print(f"📊 Found {len(item_types)} distinct item type(s) across {total_items} items:\n")
 for row in item_types:
-    print(f"   • {row['item_type']:30s}  ({row['item_count']} items)")
-print(f"\n   These types will be used to build the retention_config table.")
+    print(f"   • {row['item_type']:30s}  ({row['item_count']} items, {row['retention_days']} day retention)")
+print(f"\n   Retention days inherited from Notebook 01 Cell 4.")
 
 # METADATA ********************
 
@@ -134,11 +134,12 @@ from datetime import datetime
 
 config_rows = []
 for row in item_types:
+    ret_days = row["retention_days"]
     config_rows.append({
         "item_type":       row["item_type"],
-        "retention_days":  default_retention_days,
+        "retention_days":  ret_days,
         "action":          "flag_only",           # demo: flag only, never delete
-        "description":     f"Retain {row['item_type']} items for {default_retention_days} day(s)",
+        "description":     f"Retain {row['item_type']} items for {ret_days} day(s)",
         "updated_date":    datetime.utcnow().strftime("%Y-%m-%d"),
     })
 
@@ -160,8 +161,7 @@ df_config.write \
 
 print(f"✅ Retention config table '{config_table}' created with {len(config_rows)} type(s):\n")
 df_config.show(30, truncate=False)
-
-print(f"   ⚠️  All retention set to {default_retention_days} day(s) for DEMO")
+print(f"   📌 Retention days inherited from Notebook 01 Cell 4")
 print(f"   📌 To customize: UPDATE {config_table} SET retention_days = <N> WHERE item_type = '<type>'")
 
 # METADATA ********************
@@ -316,7 +316,7 @@ print(f"  Total items:              {total}")
 print(f"  🔴 Exceed retention:       {overdue}")
 print(f"  🟢 Within retention:       {within}")
 print(f"  ⚪ No date (can't assess): {no_date}")
-print(f"  Retention period:          {default_retention_days} day(s)  ← DEMO")
+print(f"  Retention period:          per type (from Notebook 01)")
 print(f"─" * 65)
 print(f"  📅 Date sources (how each item's date was resolved):")
 print(f"     Activity events (ID match):   {source_counts.get('activity_id_match', 0)}")
@@ -394,7 +394,7 @@ spark.table(config_table).show(30, truncate=False)
 print(f"\n{'═'*65}")
 print(f"  ✅ Report complete — NO objects were deleted or modified")
 print(f"  📌 To adjust retention: UPDATE {config_table} SET retention_days = <N> WHERE item_type = '<type>'")
-print(f"  📌 Current demo setting: {default_retention_days} day(s) for all types")
+print(f"  📌 Retention days are set in Notebook 01 Cell 4 (single source of truth)")
 print(f"{'═'*65}")
 
 # METADATA ********************
