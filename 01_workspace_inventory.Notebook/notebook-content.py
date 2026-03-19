@@ -1114,6 +1114,7 @@ for lh in lakehouses:
                         sub_item_dates += 1
 
                 display_name = f"{lh_name}/{entry_name}"
+                display_name = display_name.replace("/Files/Files/", "/Files/", 1)
 
                 retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseFile", DEFAULT_FALLBACK_DAYS)
                 reference_dt   = modified_dt or created_dt
