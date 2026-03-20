@@ -24,7 +24,7 @@
 
 # # 01 — Workspace Inventory & Retention Readiness
 # **Purpose:** Scan all accessible workspaces, catalog every object, calculate retention age, and flag items overdue for deletion.  
-# **Output:** Delta table `workspace_inventory` in the SF_Retention_POC lakehouse.  
+# **Output:** Delta table `workspace_inventory` in the Data_Retention_Reporting_demo workspace,RetentionConfig lakehouse.  
 # **Usage:** Run independently — not part of the pipeline. This is a read-only visibility report.
 
 # MARKDOWN ********************
