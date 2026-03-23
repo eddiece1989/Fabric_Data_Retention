@@ -443,7 +443,7 @@ print(f"   🔴 {overdue_count} item(s) exceed retention")
 print(f"   Report date: {datetime.utcnow().strftime('%Y-%m-%d')}")
 print(f"\n   Query it anytime:")
 print(f"   SELECT * FROM {readiness_table} ORDER BY days_overdue DESC")
-print(f"   SELECT * FROM {readiness_table} WHERE exceeds_retention = true")
+print(f"   SELECT * FROM {readiness_table} WHERE status LIKE '%EXCEEDS%'")
 print(f"   SELECT date_source, COUNT(*) FROM {readiness_table} GROUP BY date_source")
 
 # METADATA ********************
@@ -455,7 +455,7 @@ print(f"   SELECT date_source, COUNT(*) FROM {readiness_table} GROUP BY date_sou
 
 # MARKDOWN ********************
 
-# #### Cell 8
+# #### Cell 8 - create a final readiness report Excel file for export
 
 # MARKDOWN ********************
 
