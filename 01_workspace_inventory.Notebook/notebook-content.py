@@ -25,7 +25,7 @@
 # # 01 — Workspace Inventory & Retention Readiness
 # **Purpose:** Scan all accessible workspaces, catalog every object, calculate retention age, and flag items overdue for deletion.  
 # **Output:** Delta table `workspace_inventory` in the Data_Retention_Reporting_demo workspace,RetentionConfig lakehouse.  
-# **Usage:** Run independently — not part of the pipeline. This is a read-only visibility report.
+# **Usage:** Can be run independently or as part of a pipeline. This is a read-only visibility report.
 
 # MARKDOWN ********************
 
@@ -59,9 +59,7 @@ inventory_table_name = "workspace_inventory"   # Delta table name for results
 
 # ── Imports & Utilities ──
 import json
-import os
 import requests
-import fnmatch
 from datetime import datetime, timedelta, date
 from email.utils import parsedate_to_datetime
 from pyspark.sql import SparkSession
@@ -77,16 +75,6 @@ spark = SparkSession.builder.getOrCreate()
 def get_fabric_headers():
     token = mssparkutils.credentials.getToken("https://api.fabric.microsoft.com")
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-
-def load_json_config(lakehouse_path: str, filename: str) -> dict:
-    file_path = f"{lakehouse_path}/Files/config/{filename}"
-    if file_path.startswith("abfss://"):
-        content = mssparkutils.fs.head(file_path, 1000000)
-    else:
-        with open(file_path, "r") as f:
-            content = f.read()
-    return json.loads(content)
 
 
 def safe_parse_datetime(dt_string):
@@ -155,8 +143,6 @@ RETENTION_DAYS_BY_TYPE = {
     "WarehouseTable":  default_retention_days,
     "WarehouseView":   default_retention_days,
 }
-DEFAULT_FALLBACK_DAYS = default_retention_days
-
 print(f"   Default retention period: {default_retention_days} day(s)")
 print(f"   Configured object types: {len(RETENTION_DAYS_BY_TYPE)}")
 
@@ -211,23 +197,6 @@ now = datetime.utcnow()
 inventory_rows = []
 errors = []
 
-# Read-only activity types to EXCLUDE from modification tracking
-# Any event NOT in this set is treated as a potential modification
-READ_ONLY_ACTIVITIES = {
-    'ViewReport', 'ViewDashboard', 'ViewDataset', 'ViewDataflow',
-    'ViewUsageMetrics', 'ViewUsageMetricsReport', 'ViewArtifact',
-    'GetReport', 'GetDashboard', 'GetDataset', 'GetDatasources',
-    'GetRefreshHistory', 'GetRefreshSchedule', 'GetGroupUsers',
-    'GetWorkspaces', 'GetWorkspace', 'GetSnapshots',
-    'GetArtifactAccessRequestsResponseList',
-    'ExportReport', 'ExportDataflow', 'ExportArtifact',
-    'ExportActivityEvents', 'DownloadReport',
-    'ShareReport', 'ShareDashboard',
-    'PrintReport', 'GenerateScreenshot',
-    'GenerateCustomVisualAADAccessToken',
-    'AnalyzeInExcel', 'AnalyzedByExternalApplication',
-    'DiscoverSuggestedPeople', 'DiscoverSuggestedArtifacts',
-}
 
 print(f"📋 Excluding {len(READ_ONLY_ACTIVITIES)} read-only activity types\n")
 print("📡 Step 1: Running PBI Admin Scanner to fetch item dates...\n")
@@ -613,7 +582,7 @@ for ws in all_workspaces:
             ws_modified_dt = activity_name_lookup[ws_name_key].get("modified")
             ws_date_source = "activity_name_match"
 
-    ws_retention_days = RETENTION_DAYS_BY_TYPE.get("Workspace", DEFAULT_FALLBACK_DAYS)
+    ws_retention_days = RETENTION_DAYS_BY_TYPE.get("Workspace", default_retention_days)
     ws_reference_dt   = ws_modified_dt or ws_created_dt
     ws_age_days       = (now - ws_reference_dt).days if ws_reference_dt else None
     ws_deletion_due   = (ws_reference_dt + timedelta(days=ws_retention_days)) if ws_reference_dt else None
@@ -678,37 +647,11 @@ for ws in all_workspaces:
                 modified_dt = activity_name_lookup[name_key].get("modified")
                 date_source = "activity_name_match"
 
-        # Fallback 2: read dates from the Fabric Items API list response
-        if not (created_dt or modified_dt):
-            api_created  = safe_parse_datetime(item.get("createdDate") or item.get("createdDateTime") or "")
-            api_modified = safe_parse_datetime(item.get("lastUpdatedDate") or item.get("lastModifiedDate") or item.get("modifiedDateTime") or "")
-            if api_created or api_modified:
-                created_dt  = api_created
-                modified_dt = api_modified
-                date_source = "fabric_api_list"
-
-        # Fallback 3: call individual item detail endpoint for items still without dates
-        if not (created_dt or modified_dt) and item_id:
-            try:
-                detail_resp = requests.get(
-                    f"https://api.fabric.microsoft.com/v1/workspaces/{ws_id}/items/{item_id}",
-                    headers=headers
-                )
-                if detail_resp.status_code == 200:
-                    detail = detail_resp.json()
-                    api_created  = safe_parse_datetime(detail.get("createdDate") or detail.get("createdDateTime") or "")
-                    api_modified = safe_parse_datetime(detail.get("lastUpdatedDate") or detail.get("lastModifiedDate") or detail.get("modifiedDateTime") or "")
-                    if api_created or api_modified:
-                        created_dt  = api_created
-                        modified_dt = api_modified
-                        date_source = "fabric_api_detail"
-            except Exception:
-                pass  # Skip on error — item will remain with date_source='none'
 
         if created_dt or modified_dt:
             dates_found += 1
 
-        retention_days = RETENTION_DAYS_BY_TYPE.get(item_type, DEFAULT_FALLBACK_DAYS)
+        retention_days = RETENTION_DAYS_BY_TYPE.get(item_type, default_retention_days)
         reference_dt   = modified_dt or created_dt
         age_days       = (now - reference_dt).days if reference_dt else None
         deletion_due   = (reference_dt + timedelta(days=retention_days)) if reference_dt else None
@@ -855,7 +798,7 @@ for lh in lakehouses:
             table_dates  += 1
             sub_item_dates += 1
 
-        retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseTable", DEFAULT_FALLBACK_DAYS)
+        retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseTable", default_retention_days)
         reference_dt   = modified_dt or created_dt
         age_days       = (now - reference_dt).days if reference_dt else None
         deletion_due   = (reference_dt + timedelta(days=retention_days)) if reference_dt else None
@@ -1020,7 +963,7 @@ for lh in lakehouses:
                         table_dates += 1
                         sub_item_dates += 1
 
-                    retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseTable", DEFAULT_FALLBACK_DAYS)
+                    retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseTable", default_retention_days)
                     reference_dt = modified_dt or created_dt
                     age_days = (now - reference_dt).days if reference_dt else None
                     deletion_due = (reference_dt + timedelta(days=retention_days)) if reference_dt else None
@@ -1112,7 +1055,7 @@ for lh in lakehouses:
                 display_name = f"{lh_name}/{entry_name}"
                 display_name = display_name.replace("/Files/Files/", "/Files/", 1)
 
-                retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseFile", DEFAULT_FALLBACK_DAYS)
+                retention_days = RETENTION_DAYS_BY_TYPE.get("LakehouseFile", default_retention_days)
                 reference_dt   = modified_dt or created_dt
                 age_days       = (now - reference_dt).days if reference_dt else None
                 deletion_due   = (reference_dt + timedelta(days=retention_days)) if reference_dt else None
@@ -1211,7 +1154,7 @@ for wh in warehouses:
                 wh_views_found += 1
 
             display_name = f"{wh_name}/{schema_name}.{obj_name}"
-            retention_days = RETENTION_DAYS_BY_TYPE.get(item_type, DEFAULT_FALLBACK_DAYS)
+            retention_days = RETENTION_DAYS_BY_TYPE.get(item_type, default_retention_days)
             reference_dt   = modified_dt or created_dt
             age_days       = (now - reference_dt).days if reference_dt else None
             deletion_due   = (reference_dt + timedelta(days=retention_days)) if reference_dt else None
