@@ -197,6 +197,23 @@ now = datetime.utcnow()
 inventory_rows = []
 errors = []
 
+# Read-only activity types to EXCLUDE from modification tracking
+# Any event NOT in this set is treated as a potential modification
+READ_ONLY_ACTIVITIES = {
+    'ViewReport', 'ViewDashboard', 'ViewDataset', 'ViewDataflow',
+    'ViewUsageMetrics', 'ViewUsageMetricsReport', 'ViewArtifact',
+    'GetReport', 'GetDashboard', 'GetDataset', 'GetDatasources',
+    'GetRefreshHistory', 'GetRefreshSchedule', 'GetGroupUsers',
+    'GetWorkspaces', 'GetWorkspace', 'GetSnapshots',
+    'GetArtifactAccessRequestsResponseList',
+    'ExportReport', 'ExportDataflow', 'ExportArtifact',
+    'ExportActivityEvents', 'DownloadReport',
+    'ShareReport', 'ShareDashboard',
+    'PrintReport', 'GenerateScreenshot',
+    'GenerateCustomVisualAADAccessToken',
+    'AnalyzeInExcel', 'AnalyzedByExternalApplication',
+    'DiscoverSuggestedPeople', 'DiscoverSuggestedArtifacts',
+}
 
 print(f"📋 Excluding {len(READ_ONLY_ACTIVITIES)} read-only activity types\n")
 print("📡 Step 1: Running PBI Admin Scanner to fetch item dates...\n")
