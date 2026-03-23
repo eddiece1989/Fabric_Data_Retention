@@ -416,11 +416,6 @@ else:
     recovered_by_fallback = 0  # events saved by fallback field extraction
     fetch_errors = []
 
-    # Diagnostic: collect sample dropped events (no artifact_id)
-    dropped_event_samples = []  # store first 10 dropped events for inspection
-
-    # Diagnostic: track activity types of dropped events
-    dropped_by_activity = {}
 
     for day_idx, fetch_date in enumerate(days_to_fetch):
         day_start = datetime.combine(fetch_date, datetime.min.time())
@@ -468,17 +463,7 @@ else:
                     artifact_id = extract_artifact_id(event)
 
                     if not artifact_id:
-                        # Track this dropped event for diagnostics
                         skipped_no_id += 1
-                        dropped_by_activity[activity] = dropped_by_activity.get(activity, 0) + 1
-                        if len(dropped_event_samples) < 10:
-                            dropped_event_samples.append({
-                                "activity": activity,
-                                "keys": sorted(event.keys()),
-                                "sample": {k: str(v)[:80] for k, v in event.items()
-                                           if k not in ("Id", "CreationTime", "OrganizationId",
-                                                        "UserAgent", "ClientIP")}
-                            })
                         continue
 
                     if not direct_id and artifact_id:
@@ -563,21 +548,9 @@ else:
     # ════════════════════════════════════════════════════════════
     #  DIAGNOSTIC: Show dropped events (no artifact_id found)
     # ════════════════════════════════════════════════════════════
+
     if skipped_no_id > 0:
-        print(f"\n{'═'*60}")
-        print(f"  🔍 DIAGNOSTIC: {skipped_no_id} events had NO artifact_id")
-        print(f"{'═'*60}")
-
-        print(f"\n  Dropped events by Activity type:")
-        for act, cnt in sorted(dropped_by_activity.items(), key=lambda x: -x[1]):
-            print(f"    {act:45s}  {cnt:>5} events")
-
-        print(f"\n  Sample dropped events (showing all fields):")
-        for i, sample in enumerate(dropped_event_samples):
-            print(f"\n  ── Sample {i+1}: Activity = {sample['activity']} ──")
-            print(f"     Keys: {sample['keys']}")
-            for k, v in sorted(sample['sample'].items()):
-                print(f"     {k:30s} = {v}")
+        print(f"\n⚠️ {skipped_no_id} events skipped — no artifact_id found")
     else:
         print(f"\n✅ No events were dropped — all had artifact_id")
 
