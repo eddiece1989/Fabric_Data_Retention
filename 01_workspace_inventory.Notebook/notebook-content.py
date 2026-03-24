@@ -695,6 +695,29 @@ for ws in all_workspaces:
 
     print(f"   ✅ {len(all_items)} objects ({dates_found} with dates)")
 
+# ── Derive workspace dates from their items ──
+for row in inventory_rows:
+    if row["item_type"] == "Workspace" and row["date_source"] == "none":
+        ws_id = row["workspace_id"]
+        item_created = [r["created_date"] for r in inventory_rows
+                        if r["workspace_id"] == ws_id and r["item_type"] != "Workspace" and r["created_date"]]
+        item_modified = [r["last_modified_date"] for r in inventory_rows
+                         if r["workspace_id"] == ws_id and r["item_type"] != "Workspace" and r["last_modified_date"]]
+
+        earliest_created = min(item_created) if item_created else None
+        latest_modified = max(item_modified) if item_modified else None
+
+        if earliest_created or latest_modified:
+            row["created_date"] = earliest_created
+            row["last_modified_date"] = latest_modified
+            row["date_source"] = "derived_from_items"
+            reference_dt = latest_modified or earliest_created
+            # Convert date to datetime for age calculation
+            ref_datetime = datetime.combine(reference_dt, datetime.min.time())
+            row["age_days"] = (now - ref_datetime).days
+            row["deletion_due_date"] = (reference_dt + timedelta(days=row["retention_period_days"]))
+            row["is_overdue"] = (now.date() > row["deletion_due_date"])
+
 # ── Summary & Diagnostics ──
 print(f"\n{'═'*50}")
 print(f"Total objects cataloged: {len(inventory_rows)}")
