@@ -16,7 +16,7 @@ Having an inventory (Notebook 01) and activity history (Notebook 02) is useful, 
 This notebook does **not** set its own retention period. Instead, it reads the `retention_period_days` column from the `workspace_inventory` table (produced by Notebook 01). The retention days are configured in **Notebook 01 Cell 4**, which is the **single source of truth** for the entire project. This means you only need to change one place when adjusting retention — and Notebook 03 will automatically pick up the new value on its next run.
 
 ### Step 2 — Discover All Item Types
-The notebook reads the `workspace_inventory` table (created by Notebook 01) and finds all the distinct item types — things like Report, Notebook, Pipeline, SemanticModel, Lakehouse, etc. It counts how many of each type exist.
+The notebook reads the `workspace_inventory` table (created by Notebook 01) and finds all the distinct item types — things like Report, Notebook, Pipeline, Semantic Model, Lakehouse, etc. It counts how many of each type exist.
 
 ### Step 3 — Build the Retention Config Table
 For each item type discovered in Step 2, the notebook creates a row in a new table called `retention_config`. The retention days for each type are inherited from the inventory table (which got them from Notebook 01 Cell 4). Each row contains:
@@ -88,3 +88,5 @@ Typically **under 30 seconds**, since it's just reading and joining existing tab
 Two Delta tables saved in the RetentionConfig lakehouse:
 - **`retention_config`** — One row per item type with the retention period and action. Auto-generated each run.
 - **`retention_readiness`** — The final report. One row per item showing its status, dates, and whether it exceeds retention. This is the table you'd build dashboards on.
+
+The xports file containing the `retention_readiness_report.xlsx` ready for download

@@ -2,26 +2,26 @@
 
 ## What Does This Notebook Do?
 
-This notebook creates a **complete inventory of every item across all your Microsoft Fabric workspaces**. Think of it as taking a snapshot of everything your organization has — every report, dataset, notebook, pipeline, lakehouse, and more — along with when each item was last created or modified.
+This notebook creates a **complete inventory of every item across all your Microsoft Fabric workspaces**. Think of it as taking a snapshot of everything your organizations tenant has — every report, semantic model, notebook, pipeline, lakehouse, and more — along with when each item was last created or modified.
 
 ## Why Is This Important?
 
-Before you can decide what's old and should be cleaned up, you need to know **what you have** and **when it was last touched**. This notebook answers those questions by scanning every workspace your account can see.
+Before you can decide what's old and should be cleaned up, you need to know **what you have** and **when it was last touched**. This notebook answers those questions by scanning every workspace your admin account can see.
 
 ## How Does It Work? (Step by Step)
 
 ### Step 1 — Connect and List Workspaces
-The notebook connects to Microsoft Fabric using your account credentials and retrieves a list of **all workspaces** you have access to. This includes shared team workspaces as well as personal workspaces.
+The notebook connects to Microsoft Fabric using your Fabric account credentials and retrieves a list of **all workspaces** you have access to. This includes shared team workspaces as well as personal workspaces.
 
 ### Step 2 — Get Modification Dates (Two Sources)
 Getting accurate "last modified" dates in Fabric is tricky because **no single source has all the dates**. This notebook pulls from two different sources:
 
-- **PBI Admin Scanner** — This is a Microsoft API that returns creation and modification dates for classic Power BI items like Reports, Datasets, Dashboards, and Dataflows. It works well for these item types but does **not** cover newer Fabric items.
+- **PBI Admin Scanner** — This is a Microsoft API that returns creation and modification dates for classic Power BI items like Reports, semantic models, Dashboards, and Dataflows. It works well for these item types but does **not** cover newer Fabric items.
 
 - **Activity Events API** — This is a second Microsoft API that records user actions (like editing a notebook or updating a pipeline). The notebook looks at these activity records to determine when Fabric-native items (Notebooks, Pipelines, Lakehouses, etc.) were last modified. It only counts **real changes** — simply viewing or opening an item does not count as a modification.
 
 ### Step 3 — Set the Retention Period
-Before building the inventory, the notebook sets the **retention period** in Cell 4. This is the **single source of truth** for how many days an item can go without being modified before it's considered overdue. The default is **10 days** for demo purposes. You can customize retention per item type (e.g., 90 days for Reports, 180 days for SemanticModels) using the `RETENTION_DAYS_BY_TYPE` dictionary in that same cell.
+Before building the inventory, the notebook sets the **retention period** in Cell 4. This is the **single source of truth** for how many days an item can go without being modified before it's considered overdue. The default is **10 days** for demo purposes. You can customize retention per item type (e.g., 90 days for Reports, 180 days for Semantic Models) using the `RETENTION_DAYS_BY_TYPE` dictionary in that same cell.
 
 Notebook 03 reads this value from the inventory table — it does **not** have its own retention setting.
 

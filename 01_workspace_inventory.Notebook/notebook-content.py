@@ -23,14 +23,13 @@
 # MARKDOWN ********************
 
 # # 01 — Workspace Inventory & Retention Readiness
+# <p style="color:orange;">MICROSOFT DISCLAIMER - Information provided in this file is provided "as is" without Warranty Representation or Condition of any kind, either express or implied, including but not limited to conditions or other terms of merchantability and/or fitness for a particular purpose. The user assumes the entire risk as to the accuracy and use of the information produced by this script.</p>
+# 
 # **Purpose:** Scan all accessible workspaces, catalog every object, calculate retention age, and flag items overdue for deletion.  
 # **Output:** Delta table `workspace_inventory` in the Data_Retention_Reporting_demo workspace,RetentionConfig lakehouse.  
 # **Usage:** Can be run independently or as part of a pipeline. This is a read-only visibility report.
-
-# MARKDOWN ********************
-
-# ####
-#  Notebook workspace_inventory completes a full scan every time. It calls the Fabric REST API + PBI Scanner + Activity Events API to catalog all items. It overwrites the workspace_inventory table completely on each run. You should re-run this notebook periodically too because it discovers new/removed items.
+# 
+# Notebook workspace_inventory completes a full scan every time. It calls the Fabric REST API + PBI Scanner + Activity Events API to catalog all items. It overwrites the workspace_inventory table completely on each run. You should re-run this notebook periodically too because it discovers new/removed items.
 
 # MARKDOWN ********************
 
@@ -126,8 +125,8 @@ RETENTION_DAYS_BY_TYPE = {
     "Warehouse":       default_retention_days,
     "Notebook":        default_retention_days,
     "Pipeline":        default_retention_days,
-    "Report":          default_retention_days,
-    "SemanticModel":   default_retention_days,
+    "Report":          20,
+    "SemanticModel":   20,
     "DataPipeline":    default_retention_days,
     "Dataflow":        default_retention_days,
     "Environment":     default_retention_days,
@@ -1292,7 +1291,7 @@ print(f"Schema ready — {len(inventory_rows)} inventory rows, {len(schema.field
 
 # MARKDOWN ********************
 
-# #### Cell 11 — Write to Delta Table
+# #### Cell 11 — Write to workspace_inventory Delta Table
 
 # CELL ********************
 
@@ -1411,31 +1410,30 @@ type_summary = df.groupBy("item_type").agg(
 ).orderBy(col("total").desc())
 type_summary.show(30, truncate=False)
 
-# Overdue Items
-overdue_df    = df.filter(col("is_overdue") == True)
-overdue_count = overdue_df.count()
-print(f"🚨 Overdue Items: {overdue_count}")
-if overdue_count > 0:
-    overdue_df.select(
-        "workspace_name", "item_name", "item_type",
-        "age_days", "retention_period_days", "deletion_due_date", "date_source"
-    ).orderBy("age_days", ascending=False).show(100, truncate=False)
-
-# Items with no modification date
-no_date  = df.filter(col("last_modified_date").isNull())
-nd_count = no_date.count()
-if nd_count > 0:
-    print(f"\n⚠️  {nd_count} item(s) have no last_modified_date (retention not assessable):")
-    no_date.select(
-        "workspace_name", "item_name", "item_type", "date_source"
-    ).show(50, truncate=False)
-
-print("\n✅ Inventory scan complete. Query the Delta table for full details:")
-print(f"   SELECT * FROM {inventory_table_name}")
-print(f"\n   -- Retention-ready items only --")
-print(f"   SELECT * FROM {inventory_table_name} WHERE last_modified_date IS NOT NULL")
-print(f"\n   -- Items needing attention (no modification date) --")
-print(f"   SELECT * FROM {inventory_table_name} WHERE date_source = 'none'")
+# Uncomment below to display overdue items and items with no modification date
+# overdue_df    = df.filter(col("is_overdue") == True)
+# overdue_count = overdue_df.count()
+# print(f"🚨 Overdue Items: {overdue_count}")
+# if overdue_count > 0:
+#     overdue_df.select(
+#         "workspace_name", "item_name", "item_type",
+#         "age_days", "retention_period_days", "deletion_due_date", "date_source"
+#     ).orderBy("age_days", ascending=False).show(100, truncate=False)
+#
+# no_date  = df.filter(col("last_modified_date").isNull())
+# nd_count = no_date.count()
+# if nd_count > 0:
+#     print(f"\n⚠️  {nd_count} item(s) have no last_modified_date (retention not assessable):")
+#     no_date.select(
+#         "workspace_name", "item_name", "item_type", "date_source"
+#     ).show(50, truncate=False)
+#
+# print("\n✅ Inventory scan complete. Query the Delta table for full details:")
+# print(f"   SELECT * FROM {inventory_table_name}")
+# print(f"\n   -- Retention-ready items only --")
+# print(f"   SELECT * FROM {inventory_table_name} WHERE last_modified_date IS NOT NULL")
+# print(f"\n   -- Items needing attention (no modification date) --")
+# print(f"   SELECT * FROM {inventory_table_name} WHERE date_source = 'none'")
 
 # METADATA ********************
 
@@ -1451,8 +1449,10 @@ print(f"   SELECT * FROM {inventory_table_name} WHERE date_source = 'none'")
 # CELL ********************
 
 # ── Query the Delta Table ──
-df_inv = spark.sql("SELECT * FROM workspace_inventory ORDER BY workspace_name, item_type, item_name")
-df_inv.show(100, truncate=False)
+# Uncomment any query below as needed.
+
+# df_inv = spark.sql("SELECT * FROM workspace_inventory ORDER BY workspace_name, item_type, item_name")
+# df_inv.show(100, truncate=False)
 
 # Uncomment any of the queries below as needed:
 
