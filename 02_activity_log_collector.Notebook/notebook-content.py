@@ -23,11 +23,13 @@
 # MARKDOWN ********************
 
 # # 02 — Activity Log Collector
+# <p style="color:orange;">MICROSOFT DISCLAIMER - Information provided in this file is provided "as is" without Warranty Representation or Condition of any kind, either express or implied, including but not limited to conditions or other terms of merchantability and/or fitness for a particular purpose. The user assumes the entire risk as to the accuracy and use of the information produced by this script.</p>
+# 
 # **Purpose:** Incrementally collect Fabric/Power BI activity events via the Admin ActivityEvents API and land them in a Delta table. Computes a `last_modified_summary` view per item.
 # 
 # **Why this notebook exists:**
 # - The Fabric REST API (`/v1/workspaces/{id}/items`) returns **no timestamp fields** on items
-# - The PBI Admin Scanner only covers Reports, Datasets, Dataflows, Dashboards, Datamarts
+# - The PBI Admin Scanner only covers Reports, Semantic Models, Dataflows, Dashboards, Datamarts
 # - The ActivityEvents API has a **28-day retention window** — if you don't collect regularly, you lose history
 # - This notebook runs incrementally: it knows which days it has already collected and only fetches new ones
 # 
@@ -35,18 +37,10 @@
 # - Delta table `activity_events_raw` — every modification event, one row per event
 # - Delta table `activity_last_modified` — computed summary: one row per item with its last modification date
 # 
-# **Schedule:** Run daily (or at least every 28 days) to maintain continuous coverage.
+# **Schedule:** Run daily, weekly (or at least every 28 days) to maintain continuous coverage.
 # 
-# **References:**
-# - [ActivityEvents API](https://learn.microsoft.com/en-us/rest/api/power-bi/admin/get-activity-events)
-# - [Activity log guidance](https://learn.microsoft.com/en-us/fabric/enterprise/powerbi/service-admin-auditing)
-
-
-# MARKDOWN ********************
-
-# ####
 # This is the truly incremental notebook. It appends raw events to activity_events_raw, preserving history beyond the 28-day API window. If you run it every week, it only fetches the new 7 days.
-# Look at Cell 6 — it checks which days are already in activity_events_raw, then only fetches days it hasn't collected yet. Cell 8 writes with .mode("append"), so each run adds new days without touching old data. The activity_last_modified summary table (Cell 10) is then recomputed from all raw data with .mode("overwrite").
+# Cell 6 checks which days are already in activity_events_raw, then only fetches days it hasn't collected yet. Cell 8 writes with .mode("append"), so each run adds new days without touching old data. The activity_last_modified summary table (Cell 10) is then recomputed from all raw data with .mode("overwrite").
 
 
 # MARKDOWN ********************
@@ -731,11 +725,11 @@ df_summary.write \
     .option("overwriteSchema", "true") \
     .saveAsTable(summary_table_name)
 
-summary_count = df_summary.count()
-print(f"✅ Summary table '{summary_table_name}' written with {summary_count} item(s)")
-print(f"   Each row = one artifact with its last modification date\n")
+# summary_count = df_summary.count()
+# print(f"✅ Summary table '{summary_table_name}' written with {summary_count} item(s)")
+# print(f"   Each row = one artifact with its last modification date\n")
 
-df_summary.orderBy("last_modified_date", ascending=False).show(20, truncate=False)
+# df_summary.orderBy("last_modified_date", ascending=False).show(20, truncate=False)
 
 # METADATA ********************
 

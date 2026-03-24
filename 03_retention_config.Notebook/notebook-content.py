@@ -23,22 +23,21 @@
 # MARKDOWN ********************
 
 # # 03 — Retention Config & Readiness Report
-# **Purpose:** Build a `retention_config` Delta table from distinct item types found in the `workspace_inventory` table (produced by notebook 05). Then join against inventory and activity data to show which items exceed their retention period.
+# <p style="color:orange;">MICROSOFT DISCLAIMER - Information provided in this file is provided "as is" without Warranty Representation or Condition of any kind, either express or implied, including but not limited to conditions or other terms of merchantability and/or fitness for a particular purpose. The user assumes the entire risk as to the accuracy and use of the information produced by this script.</p>
+# 
+# **Purpose:** Build a `retention_config` Delta table from distinct item types found in the `workspace_inventory` table (produced by notebook 01). Then join against inventory and activity data to show which items exceed their retention period.
 # 
 # **⚠️ This notebook does NOT delete, archive, or modify any objects.**  
 # It is a **read-only readiness report** — it only shows what *would* be flagged.
 # 
 # **Prerequisites:**
-# - Run **notebook 05** first to populate `workspace_inventory`
-# - Run **notebook 06** first to populate `activity_last_modified` (optional — enriches the report)
+# - Run **notebook 01** first to populate `workspace_inventory`
+# - Run **notebook 02** first to populate `activity_last_modified` (optional — enriches the report)
 # 
 # **Output:**
 # - Delta table `retention_config` — one row per item type with retention period in days
-# - Readiness report showing items that exceed their configured retention period
-
-# MARKDOWN ********************
-
-# ####
+# - Delta table `retention_readiness` — readiness report showing items that exceed their configured retention period
+# 
 # Fully recomputed every time. It reads the current workspace_inventory + activity_last_modified, joins them, and overwrites retention_readiness with a fresh snapshot.
 
 # MARKDOWN ********************
@@ -326,33 +325,33 @@ print(f"     Created date (fallback):      {source_counts.get('created_date', 0)
 print(f"     No date available:            {source_counts.get('none', 0)}")
 print("═" * 65)
 
-# ── Items that EXCEED retention ──
-print(f"\n🔴 ITEMS EXCEEDING RETENTION ({overdue}):")
-print("   These items have not been modified within the retention window.\n")
-df_report.filter(col("exceeds_retention") == True) \
-    .select("workspace_name", "item_name", "item_type",
-            "last_modified_date", "date_source",
-            "days_since_modified", "retention_days", "days_overdue") \
-    .orderBy(col("days_overdue").desc()) \
-    .show(100, truncate=False)
+# ── Items that EXCEED retention (uncomment to display) ──
+# print(f"\n🔴 ITEMS EXCEEDING RETENTION ({overdue}):")
+# print("   These items have not been modified within the retention window.\n")
+# df_report.filter(col("exceeds_retention") == True) \
+#     .select("workspace_name", "item_name", "item_type",
+#             "last_modified_date", "date_source",
+#             "days_since_modified", "retention_days", "days_overdue") \
+#     .orderBy(col("days_overdue").desc()) \
+#     .show(100, truncate=False)
 
-# ── Items WITHIN retention ──
-print(f"🟢 ITEMS WITHIN RETENTION ({within}):")
-df_report.filter(col("exceeds_retention") == False) \
-    .select("workspace_name", "item_name", "item_type",
-            "last_modified_date", "date_source",
-            "days_since_modified", "retention_days") \
-    .orderBy("item_type", "workspace_name") \
-    .show(100, truncate=False)
+# ── Items WITHIN retention (uncomment to display) ──
+# print(f"🟢 ITEMS WITHIN RETENTION ({within}):")
+# df_report.filter(col("exceeds_retention") == False) \
+#     .select("workspace_name", "item_name", "item_type",
+#             "last_modified_date", "date_source",
+#             "days_since_modified", "retention_days") \
+#     .orderBy("item_type", "workspace_name") \
+#     .show(100, truncate=False)
 
-# ── Items with no date ──
-if no_date > 0:
-    print(f"⚪ ITEMS WITH NO MODIFICATION DATE ({no_date}):")
-    print("   Cannot assess retention — no date available from any source.\n")
-    df_report.filter(col("reference_date").isNull()) \
-        .select("workspace_name", "item_name", "item_type") \
-        .orderBy("item_type", "workspace_name") \
-        .show(50, truncate=False)
+# ── Items with no date (uncomment to display) ──
+# if no_date > 0:
+#     print(f"⚪ ITEMS WITH NO MODIFICATION DATE ({no_date}):")
+#     print("   Cannot assess retention — no date available from any source.\n")
+#     df_report.filter(col("reference_date").isNull()) \
+#         .select("workspace_name", "item_name", "item_type") \
+#         .orderBy("item_type", "workspace_name") \
+#         .show(50, truncate=False)
 
 # METADATA ********************
 

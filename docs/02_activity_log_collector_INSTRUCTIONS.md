@@ -2,7 +2,7 @@
 
 ## What Does This Notebook Do?
 
-This notebook **collects a history of user activity** from Microsoft Fabric and Power BI. Every time someone edits a report, updates a dataset, modifies a notebook, or makes any real change — that action is recorded by Microsoft as an "activity event." This notebook gathers all those events and stores them so you have a reliable record of **when each item was last changed**.
+This notebook **collects a history of user activity** from Microsoft Fabric and Power BI. Every time someone edits a report, updates a semantic model, modifies a notebook, or makes any real change — that action is recorded by Microsoft as an "activity event." This notebook gathers all those events and stores them so you have a reliable record of **when each item was last changed**.
 
 ## Why Is This Important?
 
