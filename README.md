@@ -1,4 +1,4 @@
-# Fabric Data Retention Reporting
+# Fabric Data Retention Reporting ⚙️
 
 A Microsoft Fabric workaround solution that scans your entire tenant, catalogs every workspace and item, tracks modification dates and last modified dates, and flags items that exceed their retention period — giving you a clear, actionable view of what needs attention. The user running the notebooks must have the **Fabric Administrator** role (assigned in Microsoft Entra ID). This is a **tenant-level** role.
 
