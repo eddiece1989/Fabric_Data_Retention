@@ -2,6 +2,8 @@
 
 A Microsoft Fabric workaround solution that scans your entire tenant, catalogs every workspace and item, tracks modification dates and last modified dates, and flags items that exceed their retention period — giving you a clear, actionable view of what needs attention. The user running the notebooks must have the **Fabric Administrator** role (assigned in Microsoft Entra ID). This is a **tenant-level** role.
 
+<p style="color:orange;">MICROSOFT DISCLAIMER - Information provided in this file is provided "as is" without Warranty Representation or Condition of any kind, either express or implied, including but not limited to conditions or other terms of merchantability and/or fitness for a particular purpose. The user assumes the entire risk as to the accuracy and use of the information produced by this script.</p>
+
 
 ## What It Does
 
