@@ -89,4 +89,12 @@ Two Delta tables saved in the RetentionConfig lakehouse:
 - **`retention_config`** — One row per item type with the retention period and action. Auto-generated each run.
 - **`retention_readiness`** — The final report. One row per item showing its status, dates, and whether it exceeds retention. This is the table you'd build dashboards on.
 
-The xports file containing the `retention_readiness_report.xlsx` ready for download
+The exports file containing the `retention_readiness_report.xlsx` is ready for download
+
+### Sample Output
+
+![Retention Config Report](images/Retention_Config_Report.png)
+
+![Retention Readiness Report](images/Retention_Readiness_Report.png)
+
+
