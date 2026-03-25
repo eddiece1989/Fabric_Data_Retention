@@ -72,3 +72,7 @@ Typically **2–3 minutes**, depending on how many workspaces and items your org
 ## Output
 
 A Delta table called **`workspace_inventory`** saved in the RetentionConfig lakehouse. This table is used by Notebook 03 to build the retention readiness report. It contains the retention period for each item (set in Cell 4 of this notebook), which serves as the **single source of truth** — no other notebook or config file controls retention days.
+
+### Sample Output
+
+![Workspace Inventory Delta Table](images/Workspace_Inventory_Delta_Table.png)

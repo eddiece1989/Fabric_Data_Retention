@@ -85,3 +85,9 @@ Two Delta tables saved in the RetentionConfig lakehouse:
 - **`activity_last_modified`** — One row per item showing its most recent modification date. Recomputed each run.
 
 The `activity_last_modified` table is used by Notebook 03 to determine how recently each item was changed.
+
+### Sample Output
+
+![Activity Events Raw Delta Table](images/Activity_Events_Raw_Delta_Table.png)
+
+![Activity Last Modified Delta Table](images/Activity_Last_Modified_Delta_Table.png)
