@@ -184,8 +184,9 @@ print(f"   📌 To customize: UPDATE {config_table} SET retention_days = <N> WHE
 
 from pyspark.sql.functions import (
     datediff, current_date, when, col, count, coalesce, lower, trim, lit,
-    sum as spark_sum, avg, max as spark_max, min as spark_min
+    sum as spark_sum, avg, max as spark_max, min as spark_min, row_number
 )
+from pyspark.sql.window import Window
 
 # ── Read all three source tables ──
 # Filter out internal Fabric noise (system tables + delta storage files)
@@ -293,6 +294,16 @@ df_report = df_enriched.select(
     .when(col("exceeds_retention") == True, "🔴 EXCEEDS RETENTION")
     .otherwise("🟢 Within retention")
 ).drop("act_date_by_id", "act_date_by_name", "inventory_modified_date")
+
+# ── Deduplicate: keep exactly one row per item_id ──
+# Prefer rows that have a date, then pick the most recent date
+dedup_window = Window.partitionBy("item_id").orderBy(
+    when(col("reference_date").isNotNull(), 0).otherwise(1),
+    col("reference_date").desc_nulls_last()
+)
+df_report = df_report.withColumn("_rank", row_number().over(dedup_window)) \
+                     .filter(col("_rank") == 1) \
+                     .drop("_rank")
 
 # Cache for reuse
 df_report.cache()
