@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# Internal notes (not published to GitHub)
+INTERNAL_NOTES.md
