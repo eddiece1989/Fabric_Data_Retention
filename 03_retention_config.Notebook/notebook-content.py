@@ -40,6 +40,7 @@
 # 
 # Fully recomputed every time. It reads the current workspace_inventory + activity_last_modified, joins them, and overwrites retention_readiness with a fresh snapshot.
 
+
 # MARKDOWN ********************
 
 # #### Cell 2 — Parameters
