@@ -31,6 +31,7 @@
 # 
 # Notebook workspace_inventory completes a full scan every time. It calls the Fabric REST API + PBI Scanner + Activity Events API to catalog all items. It overwrites the workspace_inventory table completely on each run. You should re-run this notebook periodically too because it discovers new/removed items.
 
+
 # MARKDOWN ********************
 
 # 
