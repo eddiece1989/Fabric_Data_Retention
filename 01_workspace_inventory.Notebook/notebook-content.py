@@ -1687,3 +1687,20 @@ type_summary.show(30, truncate=False)
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark"
 # META }
+
+# MARKDOWN ********************
+
+# #### Stop Session
+
+# CELL ********************
+
+# ── Stop Spark session to release compute resources ──
+print("🛑 Stopping Spark session...")
+mssparkutils.session.stop()
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }

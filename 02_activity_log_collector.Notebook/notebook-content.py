@@ -946,3 +946,20 @@ print(f"   SELECT * FROM {summary_table_name}   -- per-item last modified date")
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark"
 # META }
+
+# MARKDOWN ********************
+
+# #### Stop Session
+
+# CELL ********************
+
+# ── Stop Spark session to release compute resources ──
+print("🛑 Stopping Spark session...")
+mssparkutils.session.stop()
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
