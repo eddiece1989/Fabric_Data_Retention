@@ -65,6 +65,7 @@ use_service_principal = False
 sp_tenant_id     = ""   # Directory (tenant) ID from Entra App Registration
 sp_client_id     = ""   # Application (client) ID from Entra App Registration
 sp_client_secret = ""   # Client secret Value from Entra App Registration
+sp_object_id     = ""   # Service Principal Object ID (Enterprise Applications → Object ID)
 
 # METADATA ********************
 
@@ -203,8 +204,6 @@ print(f"   Only MODIFICATION events are stored in the raw table")
 #   1. Fabric REST API — covers shared/org workspaces
 #   2. PBI Admin Groups API — covers personal workspaces (type = 'PersonalGroup')
 
-print("📡 Step 1: Listing org workspaces via Fabric REST API...\n")
-
 fabric_token = get_token("https://api.fabric.microsoft.com")
 fabric_headers = {
     "Authorization": f"Bearer {fabric_token}",
@@ -212,15 +211,34 @@ fabric_headers = {
 }
 
 workspace_lookup = {}  # workspace_id -> workspace_name
-continuation_url = "https://api.fabric.microsoft.com/v1/workspaces"
 
-while continuation_url:
-    resp = requests.get(continuation_url, headers=fabric_headers)
-    resp.raise_for_status()
-    data = resp.json()
-    for ws in data.get("value", []):
-        workspace_lookup[ws["id"]] = ws["displayName"]
-    continuation_url = data.get("continuationUri") or data.get("@odata.nextLink")
+if use_service_principal:
+    # Admin API — returns ALL tenant workspaces, no per-workspace access needed
+    print("📡 Step 1: Listing org workspaces via Admin API (tenant-wide)...\n")
+    continuation_url = "https://api.fabric.microsoft.com/v1/admin/workspaces?state=Active"
+    while continuation_url:
+        resp = requests.get(continuation_url, headers=fabric_headers)
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 30))
+            print(f"   ⏳ Rate-limited — waiting {retry_after}s...")
+            import time; time.sleep(retry_after)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        for ws in data.get("workspaces", []):
+            workspace_lookup[ws["id"]] = ws.get("name", "Unknown")
+        continuation_url = data.get("continuationUri")
+else:
+    # User identity — returns only workspaces the user has access to
+    print("📡 Step 1: Listing org workspaces via Fabric REST API...\n")
+    continuation_url = "https://api.fabric.microsoft.com/v1/workspaces"
+    while continuation_url:
+        resp = requests.get(continuation_url, headers=fabric_headers)
+        resp.raise_for_status()
+        data = resp.json()
+        for ws in data.get("value", []):
+            workspace_lookup[ws["id"]] = ws["displayName"]
+        continuation_url = data.get("continuationUri") or data.get("@odata.nextLink")
 
 org_count = len(workspace_lookup)
 print(f"   Found {org_count} org/shared workspace(s)")
