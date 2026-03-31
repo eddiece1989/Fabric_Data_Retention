@@ -296,9 +296,11 @@ df_report = df_enriched.select(
     .otherwise("🟢 Within retention")
 ).drop("act_date_by_id", "act_date_by_name", "inventory_modified_date")
 
-# ── Deduplicate: keep exactly one row per item_id ──
-# Prefer rows that have a date, then pick the most recent date
-dedup_window = Window.partitionBy("item_id").orderBy(
+# ── Deduplicate: keep exactly one row per unique item ──
+# Partition by (item_id, item_type, item_name) to preserve sub-items
+# (LakehouseTable, LakehouseFile, etc.) which share the parent's item_id.
+# Prefer rows that have a date, then pick the most recent date.
+dedup_window = Window.partitionBy("item_id", "item_type", "item_name").orderBy(
     when(col("reference_date").isNotNull(), 0).otherwise(1),
     col("reference_date").desc_nulls_last()
 )
