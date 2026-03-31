@@ -44,6 +44,13 @@
 config_lakehouse_path = "/lakehouse/default"  # Mount path to RetentionConfig lakehouse
 inventory_table_name = "workspace_inventory"   # Delta table name for results
 
+# ── Service Principal Parameters (Option 1: SP + MSAL) ──
+# Set use_service_principal = True to authenticate via SP instead of user identity
+use_service_principal = False
+sp_tenant_id     = ""   # Directory (tenant) ID from Entra App Registration
+sp_client_id     = ""   # Application (client) ID from Entra App Registration
+sp_client_secret = ""   # Client secret Value from Entra App Registration
+
 # METADATA ********************
 
 # META {
@@ -72,8 +79,35 @@ from pyspark.sql.functions import col, lit, datediff, when
 spark = SparkSession.builder.getOrCreate()
 
 
+# ── Token Acquisition (supports both user identity and SP + MSAL) ──
+def get_sp_token(scope):
+    """Acquire an OAuth token using Service Principal + MSAL."""
+    import msal
+    authority = f"https://login.microsoftonline.com/{sp_tenant_id}"
+    app = msal.ConfidentialClientApplication(
+        sp_client_id,
+        authority=authority,
+        client_credential=sp_client_secret,
+    )
+    result = app.acquire_token_for_client(scopes=[scope])
+    if "access_token" not in result:
+        raise Exception(f"MSAL token error: {result.get('error_description', result)}")
+    return result["access_token"]
+
+
+def get_token(scope):
+    """Get a token using SP (if configured) or user identity."""
+    if use_service_principal:
+        # MSAL scopes require /.default suffix for client_credentials flow
+        if not scope.endswith("/.default"):
+            scope = scope.rstrip("/") + "/.default"
+        return get_sp_token(scope)
+    else:
+        return mssparkutils.credentials.getToken(scope)
+
+
 def get_fabric_headers():
-    token = mssparkutils.credentials.getToken("https://api.fabric.microsoft.com")
+    token = get_token("https://api.fabric.microsoft.com")
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
@@ -218,7 +252,7 @@ READ_ONLY_ACTIVITIES = {
 print(f"📋 Excluding {len(READ_ONLY_ACTIVITIES)} read-only activity types\n")
 print("📡 Step 1: Running PBI Admin Scanner to fetch item dates...\n")
 
-pbi_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+pbi_token = get_token("https://analysis.windows.net/powerbi/api")
 pbi_headers = {
     "Authorization": f"Bearer {pbi_token}",
     "Content-Type": "application/json"
@@ -759,7 +793,7 @@ print("\n📋 Step 2b: Discovering tables/files inside Lakehouses & Warehouses..
 headers = get_fabric_headers()
 
 # OneLake DFS requires a token scoped to storage.azure.com, not api.fabric.microsoft.com
-onelake_token = mssparkutils.credentials.getToken("https://storage.azure.com/")
+onelake_token = get_token("https://storage.azure.com/")
 onelake_headers = {"Authorization": f"Bearer {onelake_token}"}
 
 sub_item_count = 0

@@ -59,6 +59,13 @@ lookback_days         = 28                           # API retention window (max
 # After running once with True, set back to False for incremental collection.
 force_refetch         = False
 
+# ── Service Principal Parameters (Option 1: SP + MSAL) ──
+# Set use_service_principal = True to authenticate via SP instead of user identity
+use_service_principal = False
+sp_tenant_id     = ""   # Directory (tenant) ID from Entra App Registration
+sp_client_id     = ""   # Application (client) ID from Entra App Registration
+sp_client_secret = ""   # Client secret Value from Entra App Registration
+
 # METADATA ********************
 
 # META {
@@ -89,6 +96,32 @@ from pyspark.sql.functions import (
 from delta.tables import DeltaTable
 
 spark = SparkSession.builder.getOrCreate()
+
+
+# ── Token Acquisition (supports both user identity and SP + MSAL) ──
+def get_sp_token(scope):
+    """Acquire an OAuth token using Service Principal + MSAL."""
+    import msal
+    authority = f"https://login.microsoftonline.com/{sp_tenant_id}"
+    app = msal.ConfidentialClientApplication(
+        sp_client_id,
+        authority=authority,
+        client_credential=sp_client_secret,
+    )
+    result = app.acquire_token_for_client(scopes=[scope])
+    if "access_token" not in result:
+        raise Exception(f"MSAL token error: {result.get('error_description', result)}")
+    return result["access_token"]
+
+
+def get_token(scope):
+    """Get a token using SP (if configured) or user identity."""
+    if use_service_principal:
+        if not scope.endswith("/.default"):
+            scope = scope.rstrip("/") + "/.default"
+        return get_sp_token(scope)
+    else:
+        return mssparkutils.credentials.getToken(scope)
 
 
 def safe_parse_datetime(dt_string):
@@ -172,7 +205,7 @@ print(f"   Only MODIFICATION events are stored in the raw table")
 
 print("📡 Step 1: Listing org workspaces via Fabric REST API...\n")
 
-fabric_token = mssparkutils.credentials.getToken("https://api.fabric.microsoft.com")
+fabric_token = get_token("https://api.fabric.microsoft.com")
 fabric_headers = {
     "Authorization": f"Bearer {fabric_token}",
     "Content-Type": "application/json"
@@ -195,7 +228,7 @@ print(f"   Found {org_count} org/shared workspace(s)")
 # ── Step 2: Personal workspaces via PBI Admin Groups API ──
 print(f"\n📡 Step 2: Listing personal workspaces via PBI Admin Groups API...")
 
-pbi_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+pbi_token = get_token("https://analysis.windows.net/powerbi/api")
 pbi_headers = {
     "Authorization": f"Bearer {pbi_token}",
     "Content-Type": "application/json"
@@ -397,7 +430,7 @@ if not days_to_fetch:
     print("⏭️  No new days to fetch — skipping API calls")
     new_events = []
 else:
-    pbi_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+    pbi_token = get_token("https://analysis.windows.net/powerbi/api")
     pbi_headers = {
         "Authorization": f"Bearer {pbi_token}",
         "Content-Type": "application/json"
