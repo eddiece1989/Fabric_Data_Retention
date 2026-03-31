@@ -59,6 +59,14 @@ lookback_days         = 28                           # API retention window (max
 # After running once with True, set back to False for incremental collection.
 force_refetch         = False
 
+# ── Service Principal Parameters (Option 1: SP + MSAL) ──
+# Set use_service_principal = True to authenticate via SP instead of user identity
+use_service_principal = False
+sp_tenant_id     = ""   # Directory (tenant) ID from Entra App Registration
+sp_client_id     = ""   # Application (client) ID from Entra App Registration
+sp_client_secret = ""   # Client secret Value from Entra App Registration
+sp_object_id     = ""   # Service Principal Object ID (Enterprise Applications → Object ID)
+
 # METADATA ********************
 
 # META {
@@ -89,6 +97,32 @@ from pyspark.sql.functions import (
 from delta.tables import DeltaTable
 
 spark = SparkSession.builder.getOrCreate()
+
+
+# ── Token Acquisition (supports both user identity and SP + MSAL) ──
+def get_sp_token(scope):
+    """Acquire an OAuth token using Service Principal + MSAL."""
+    import msal
+    authority = f"https://login.microsoftonline.com/{sp_tenant_id}"
+    app = msal.ConfidentialClientApplication(
+        sp_client_id,
+        authority=authority,
+        client_credential=sp_client_secret,
+    )
+    result = app.acquire_token_for_client(scopes=[scope])
+    if "access_token" not in result:
+        raise Exception(f"MSAL token error: {result.get('error_description', result)}")
+    return result["access_token"]
+
+
+def get_token(scope):
+    """Get a token using SP (if configured) or user identity."""
+    if use_service_principal:
+        if not scope.endswith("/.default"):
+            scope = scope.rstrip("/") + "/.default"
+        return get_sp_token(scope)
+    else:
+        return mssparkutils.credentials.getToken(scope)
 
 
 def safe_parse_datetime(dt_string):
@@ -170,24 +204,41 @@ print(f"   Only MODIFICATION events are stored in the raw table")
 #   1. Fabric REST API — covers shared/org workspaces
 #   2. PBI Admin Groups API — covers personal workspaces (type = 'PersonalGroup')
 
-print("📡 Step 1: Listing org workspaces via Fabric REST API...\n")
-
-fabric_token = mssparkutils.credentials.getToken("https://api.fabric.microsoft.com")
+fabric_token = get_token("https://api.fabric.microsoft.com")
 fabric_headers = {
     "Authorization": f"Bearer {fabric_token}",
     "Content-Type": "application/json"
 }
 
 workspace_lookup = {}  # workspace_id -> workspace_name
-continuation_url = "https://api.fabric.microsoft.com/v1/workspaces"
 
-while continuation_url:
-    resp = requests.get(continuation_url, headers=fabric_headers)
-    resp.raise_for_status()
-    data = resp.json()
-    for ws in data.get("value", []):
-        workspace_lookup[ws["id"]] = ws["displayName"]
-    continuation_url = data.get("continuationUri") or data.get("@odata.nextLink")
+if use_service_principal:
+    # Admin API — returns ALL tenant workspaces, no per-workspace access needed
+    print("📡 Step 1: Listing org workspaces via Admin API (tenant-wide)...\n")
+    continuation_url = "https://api.fabric.microsoft.com/v1/admin/workspaces?state=Active"
+    while continuation_url:
+        resp = requests.get(continuation_url, headers=fabric_headers)
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 30))
+            print(f"   ⏳ Rate-limited — waiting {retry_after}s...")
+            import time; time.sleep(retry_after)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        for ws in data.get("workspaces", []):
+            workspace_lookup[ws["id"]] = ws.get("name", "Unknown")
+        continuation_url = data.get("continuationUri")
+else:
+    # User identity — returns only workspaces the user has access to
+    print("📡 Step 1: Listing org workspaces via Fabric REST API...\n")
+    continuation_url = "https://api.fabric.microsoft.com/v1/workspaces"
+    while continuation_url:
+        resp = requests.get(continuation_url, headers=fabric_headers)
+        resp.raise_for_status()
+        data = resp.json()
+        for ws in data.get("value", []):
+            workspace_lookup[ws["id"]] = ws["displayName"]
+        continuation_url = data.get("continuationUri") or data.get("@odata.nextLink")
 
 org_count = len(workspace_lookup)
 print(f"   Found {org_count} org/shared workspace(s)")
@@ -195,7 +246,7 @@ print(f"   Found {org_count} org/shared workspace(s)")
 # ── Step 2: Personal workspaces via PBI Admin Groups API ──
 print(f"\n📡 Step 2: Listing personal workspaces via PBI Admin Groups API...")
 
-pbi_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+pbi_token = get_token("https://analysis.windows.net/powerbi/api")
 pbi_headers = {
     "Authorization": f"Bearer {pbi_token}",
     "Content-Type": "application/json"
@@ -397,7 +448,7 @@ if not days_to_fetch:
     print("⏭️  No new days to fetch — skipping API calls")
     new_events = []
 else:
-    pbi_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+    pbi_token = get_token("https://analysis.windows.net/powerbi/api")
     pbi_headers = {
         "Authorization": f"Bearer {pbi_token}",
         "Content-Type": "application/json"
@@ -888,6 +939,23 @@ print(f"   SELECT * FROM {summary_table_name}   -- per-item last modified date")
 #     GROUP BY event_date
 #     ORDER BY event_date DESC
 # """).show(30, truncate=False)
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# MARKDOWN ********************
+
+# #### Stop Session
+
+# CELL ********************
+
+# ── Stop Spark session to release compute resources ──
+print("🛑 Stopping Spark session...")
+mssparkutils.session.stop()
 
 # METADATA ********************
 

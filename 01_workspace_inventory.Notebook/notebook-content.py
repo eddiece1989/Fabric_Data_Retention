@@ -44,6 +44,14 @@
 config_lakehouse_path = "/lakehouse/default"  # Mount path to RetentionConfig lakehouse
 inventory_table_name = "workspace_inventory"   # Delta table name for results
 
+# ── Service Principal Parameters (Option 1: SP + MSAL) ──
+# Set use_service_principal = True to authenticate via SP instead of user identity
+use_service_principal = False
+sp_tenant_id     = ""   # Directory (tenant) ID from Entra App Registration
+sp_client_id     = ""   # Application (client) ID from Entra App Registration
+sp_client_secret = ""   # Client secret Value from Entra App Registration
+sp_object_id     = ""   # Service Principal Object ID (Enterprise Applications → Object ID). Required for bootstrap.
+
 # METADATA ********************
 
 # META {
@@ -72,8 +80,35 @@ from pyspark.sql.functions import col, lit, datediff, when
 spark = SparkSession.builder.getOrCreate()
 
 
+# ── Token Acquisition (supports both user identity and SP + MSAL) ──
+def get_sp_token(scope):
+    """Acquire an OAuth token using Service Principal + MSAL."""
+    import msal
+    authority = f"https://login.microsoftonline.com/{sp_tenant_id}"
+    app = msal.ConfidentialClientApplication(
+        sp_client_id,
+        authority=authority,
+        client_credential=sp_client_secret,
+    )
+    result = app.acquire_token_for_client(scopes=[scope])
+    if "access_token" not in result:
+        raise Exception(f"MSAL token error: {result.get('error_description', result)}")
+    return result["access_token"]
+
+
+def get_token(scope):
+    """Get a token using SP (if configured) or user identity."""
+    if use_service_principal:
+        # MSAL scopes require /.default suffix for client_credentials flow
+        if not scope.endswith("/.default"):
+            scope = scope.rstrip("/") + "/.default"
+        return get_sp_token(scope)
+    else:
+        return mssparkutils.credentials.getToken(scope)
+
+
 def get_fabric_headers():
-    token = mssparkutils.credentials.getToken("https://api.fabric.microsoft.com")
+    token = get_token("https://api.fabric.microsoft.com")
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
@@ -155,23 +190,140 @@ print(f"   Configured object types: {len(RETENTION_DAYS_BY_TYPE)}")
 
 # MARKDOWN ********************
 
+# #### Cell 4b — Bootstrap: Grant SP Access to All Workspaces (One-Time Setup)
+
+# CELL ********************
+
+# ── Bootstrap: automatically add SP to all workspaces (SP mode only) ──
+# This cell grants the Service Principal "Member" access to every workspace
+# so it can read lakehouse tables/files via the Fabric REST API and OneLake DFS.
+# Run this once at deployment, and re-run periodically to pick up new workspaces.
+# Requires sp_object_id (from Entra ID → Enterprise Applications → Object ID).
+#
+# NOTE: The bootstrap uses the SIGNED-IN USER's identity (Fabric credential) for
+# the PBI Admin API call — not the SP itself. This avoids needing Power BI Service
+# API permissions on the app registration, which conflict with the Fabric REST API.
+
+if use_service_principal and sp_object_id:
+    import time as _time
+    print("🔧 Bootstrap: Granting SP workspace access (tenant-wide)...\n")
+
+    bootstrap_headers = get_fabric_headers()
+
+    # List all workspaces via admin API (SP token — Fabric API)
+    bootstrap_workspaces = []
+    bootstrap_url = "https://api.fabric.microsoft.com/v1/admin/workspaces?state=Active"
+    while bootstrap_url:
+        resp = requests.get(bootstrap_url, headers=bootstrap_headers)
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 30))
+            print(f"   ⏳ Rate-limited — waiting {retry_after}s...")
+            _time.sleep(retry_after)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        bootstrap_workspaces.extend(data.get("workspaces", []))
+        bootstrap_url = data.get("continuationUri")
+
+    print(f"   Found {len(bootstrap_workspaces)} workspace(s)\n")
+
+    # PBI Admin API to add SP as Member to each workspace
+    # Use the SIGNED-IN USER's token (Fabric credential) — not the SP token.
+    # The SP cannot call the PBI Admin write API without Power BI Service permissions,
+    # and adding those permissions breaks the Fabric REST API (causes 500 errors).
+    pbi_bootstrap_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+    pbi_bootstrap_headers = {
+        "Authorization": f"Bearer {pbi_bootstrap_token}",
+        "Content-Type": "application/json"
+    }
+
+    added = 0
+    skipped = 0
+    failed = 0
+    for ws in bootstrap_workspaces:
+        ws_id_b = ws.get("id", "")
+        ws_name_b = ws.get("name", ws.get("displayName", "Unknown"))
+        try:
+            add_url = f"https://api.powerbi.com/v1.0/myorg/admin/groups/{ws_id_b}/users"
+            body = {
+                "identifier": sp_object_id,
+                "groupUserAccessRight": "Member",
+                "principalType": "App"
+            }
+            resp = requests.post(add_url, headers=pbi_bootstrap_headers, json=body)
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", 30))
+                print(f"   ⏳ Rate-limited — waiting {retry_after}s...")
+                _time.sleep(retry_after)
+                resp = requests.post(add_url, headers=pbi_bootstrap_headers, json=body)
+            if resp.status_code == 200:
+                added += 1
+            elif resp.status_code == 400 and "already exists" in resp.text.lower():
+                skipped += 1
+            else:
+                failed += 1
+                print(f"   ⚠️ {ws_name_b}: {resp.status_code} — {resp.text[:120]}")
+        except Exception as e:
+            failed += 1
+            print(f"   ❌ {ws_name_b}: {e}")
+
+    print(f"\n🔧 Bootstrap complete:")
+    print(f"   ✅ Added:   {added}")
+    print(f"   ⏭️ Already existed: {skipped}")
+    if failed:
+        print(f"   ❌ Failed:  {failed}")
+
+elif use_service_principal and not sp_object_id:
+    print("⚠️ Bootstrap skipped — sp_object_id not set.")
+    print("   Without bootstrap, lakehouse sub-items may not be accessible.")
+    print("   Set sp_object_id in Cell 2 or manually add SP to workspaces.\n")
+else:
+    print("ℹ️ Bootstrap skipped — using Fabric credentials (user identity).\n")
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# MARKDOWN ********************
+
 # #### Cell 5 — Scan All Workspaces
 
 # CELL ********************
 
 # ── Scan all accessible workspaces ──
-print("📡 Listing all accessible workspaces...\n")
 headers = get_fabric_headers()
-
 all_workspaces = []
-continuation_url = "https://api.fabric.microsoft.com/v1/workspaces"
 
-while continuation_url:
-    resp = requests.get(continuation_url, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
-    all_workspaces.extend(data.get("value", []))
-    continuation_url = data.get("continuationUri") or data.get("@odata.nextLink")
+if use_service_principal:
+    # Admin API — returns ALL tenant workspaces, no per-workspace access needed
+    print("📡 Listing all workspaces via Admin API (tenant-wide)...\n")
+    continuation_url = "https://api.fabric.microsoft.com/v1/admin/workspaces?state=Active"
+    while continuation_url:
+        resp = requests.get(continuation_url, headers=headers)
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 30))
+            print(f"   ⏳ Rate-limited — waiting {retry_after}s...")
+            import time; time.sleep(retry_after)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        for ws in data.get("workspaces", []):
+            ws["displayName"] = ws.pop("name", ws.get("displayName", "Unknown"))
+        all_workspaces.extend(data.get("workspaces", []))
+        continuation_url = data.get("continuationUri")
+else:
+    # User identity — returns only workspaces the user has access to
+    print("📡 Listing all accessible workspaces...\n")
+    continuation_url = "https://api.fabric.microsoft.com/v1/workspaces"
+    while continuation_url:
+        resp = requests.get(continuation_url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        all_workspaces.extend(data.get("value", []))
+        continuation_url = data.get("continuationUri") or data.get("@odata.nextLink")
 
 print(f"Found {len(all_workspaces)} total workspace(s):\n")
 for ws in all_workspaces:
@@ -218,7 +370,7 @@ READ_ONLY_ACTIVITIES = {
 print(f"📋 Excluding {len(READ_ONLY_ACTIVITIES)} read-only activity types\n")
 print("📡 Step 1: Running PBI Admin Scanner to fetch item dates...\n")
 
-pbi_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
+pbi_token = get_token("https://analysis.windows.net/powerbi/api")
 pbi_headers = {
     "Authorization": f"Bearer {pbi_token}",
     "Content-Type": "application/json"
@@ -575,6 +727,30 @@ print("\n📋 Step 2: Listing all items per workspace & merging dates...\n")
 inventory_rows = []
 errors = []
 
+# ── SP mode: bulk-fetch all items via Admin API (avoids per-workspace calls) ──
+admin_items_by_workspace = {}
+if use_service_principal:
+    print("📡 Bulk-fetching all items via Admin API (tenant-wide)...")
+    admin_items_url = "https://api.fabric.microsoft.com/v1/admin/items"
+    while admin_items_url:
+        resp = requests.get(admin_items_url, headers=headers)
+        if resp.status_code == 429:
+            retry_after = int(resp.headers.get("Retry-After", 30))
+            print(f"   ⏳ Rate-limited — waiting {retry_after}s...")
+            import time; time.sleep(retry_after)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        for item in data.get("itemEntities", []):
+            item["displayName"] = item.pop("name", item.get("displayName", "Unknown"))
+            ws_id_key = item.get("workspaceId", "")
+            if ws_id_key not in admin_items_by_workspace:
+                admin_items_by_workspace[ws_id_key] = []
+            admin_items_by_workspace[ws_id_key].append(item)
+        admin_items_url = data.get("continuationUri")
+    total_admin_items = sum(len(v) for v in admin_items_by_workspace.values())
+    print(f"   ✅ Fetched {total_admin_items} items across {len(admin_items_by_workspace)} workspaces\n")
+
 for ws in all_workspaces:
     ws_name = ws["displayName"]
     ws_id = ws["id"]
@@ -626,19 +802,24 @@ for ws in all_workspaces:
     items_url = f"https://api.fabric.microsoft.com/v1/workspaces/{ws_id}/items"
     all_items = []
 
-    try:
-        page_url = items_url
-        while page_url:
-            items_resp = requests.get(page_url, headers=headers)
-            items_resp.raise_for_status()
-            items_data = items_resp.json()
-            all_items.extend(items_data.get("value", []))
-            page_url = items_data.get("continuationUri") or items_data.get("@odata.nextLink")
-    except Exception as e:
-        err_msg = f"Error listing items in {ws_name}: {e}"
-        print(f"   ❌ {err_msg}")
-        errors.append(err_msg)
-        continue
+    if use_service_principal:
+        # SP mode: items already bulk-fetched via Admin API
+        all_items = admin_items_by_workspace.get(ws_id, [])
+    else:
+        # User identity: fetch per-workspace
+        try:
+            page_url = items_url
+            while page_url:
+                items_resp = requests.get(page_url, headers=headers)
+                items_resp.raise_for_status()
+                items_data = items_resp.json()
+                all_items.extend(items_data.get("value", []))
+                page_url = items_data.get("continuationUri") or items_data.get("@odata.nextLink")
+        except Exception as e:
+            err_msg = f"Error listing items in {ws_name}: {e}"
+            print(f"   ❌ {err_msg}")
+            errors.append(err_msg)
+            continue
 
     dates_found = 0
     for item in all_items:
@@ -759,7 +940,7 @@ print("\n📋 Step 2b: Discovering tables/files inside Lakehouses & Warehouses..
 headers = get_fabric_headers()
 
 # OneLake DFS requires a token scoped to storage.azure.com, not api.fabric.microsoft.com
-onelake_token = mssparkutils.credentials.getToken("https://storage.azure.com/")
+onelake_token = get_token("https://storage.azure.com/")
 onelake_headers = {"Authorization": f"Bearer {onelake_token}"}
 
 sub_item_count = 0
@@ -1506,6 +1687,23 @@ type_summary.show(30, truncate=False)
 #     GROUP BY item_type
 #     ORDER BY total DESC
 # """).show(30, truncate=False)
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# MARKDOWN ********************
+
+# #### Stop Session
+
+# CELL ********************
+
+# ── Stop Spark session to release compute resources ──
+print("🛑 Stopping Spark session...")
+mssparkutils.session.stop()
 
 # METADATA ********************
 
