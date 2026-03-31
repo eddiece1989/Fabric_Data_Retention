@@ -199,6 +199,10 @@ print(f"   Configured object types: {len(RETENTION_DAYS_BY_TYPE)}")
 # so it can read lakehouse tables/files via the Fabric REST API and OneLake DFS.
 # Run this once at deployment, and re-run periodically to pick up new workspaces.
 # Requires sp_object_id (from Entra ID → Enterprise Applications → Object ID).
+#
+# NOTE: The bootstrap uses the SIGNED-IN USER's identity (Fabric credential) for
+# the PBI Admin API call — not the SP itself. This avoids needing Power BI Service
+# API permissions on the app registration, which conflict with the Fabric REST API.
 
 if use_service_principal and sp_object_id:
     import time as _time
@@ -206,7 +210,7 @@ if use_service_principal and sp_object_id:
 
     bootstrap_headers = get_fabric_headers()
 
-    # List all workspaces via admin API
+    # List all workspaces via admin API (SP token — Fabric API)
     bootstrap_workspaces = []
     bootstrap_url = "https://api.fabric.microsoft.com/v1/admin/workspaces?state=Active"
     while bootstrap_url:
@@ -224,7 +228,10 @@ if use_service_principal and sp_object_id:
     print(f"   Found {len(bootstrap_workspaces)} workspace(s)\n")
 
     # PBI Admin API to add SP as Member to each workspace
-    pbi_bootstrap_token = get_token("https://analysis.windows.net/powerbi/api")
+    # Use the SIGNED-IN USER's token (Fabric credential) — not the SP token.
+    # The SP cannot call the PBI Admin write API without Power BI Service permissions,
+    # and adding those permissions breaks the Fabric REST API (causes 500 errors).
+    pbi_bootstrap_token = mssparkutils.credentials.getToken("https://analysis.windows.net/powerbi/api")
     pbi_bootstrap_headers = {
         "Authorization": f"Bearer {pbi_bootstrap_token}",
         "Content-Type": "application/json"
