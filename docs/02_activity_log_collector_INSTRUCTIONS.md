@@ -15,15 +15,25 @@ Think of it like a security camera that only keeps 28 days of footage. If you do
 
 ## How Does It Work? (Step by Step)
 
+### Authentication
+This notebook supports two authentication methods, configured in Cell 2:
+
+- **Fabric Credential (default)** — Uses the signed-in user's identity. Set `use_service_principal = False` in Cell 2 (this is the default — no other changes needed).
+- **Service Principal** — Uses an Entra ID App Registration with client credentials. Set `use_service_principal = True` and fill in `sp_tenant_id`, `sp_client_id`, `sp_client_secret`, and `sp_object_id` in Cell 2.
+
+The same parameters and values used in Notebook 01 should be used here.
+
 ### Step 1 — Filter Out "View-Only" Activity
 Not all activity counts as a modification. If someone just **opens** a report to look at it, that shouldn't reset the clock on how old that report is. This notebook maintains a list of **30+ read-only actions** (like viewing, exporting, downloading, sharing) that are excluded. Only **real changes** (editing, creating, updating, deleting) are kept.
 
 ### Step 2 — Build a Workspace Directory
 The notebook creates a lookup of all workspace names and IDs by calling two Microsoft APIs:
-- **Fabric REST API** — for shared/organizational workspaces
+- **Fabric REST API** — for shared/organizational workspaces (in SP mode, uses the Admin API for tenant-wide listing)
 - **PBI Admin Groups API** — for personal workspaces ("My workspace")
 
 This is needed because the activity events often include a workspace ID but not the workspace name, so the notebook resolves the names itself.
+
+> **Note:** The Service Principal path uses the Admin API (`/v1/admin/workspaces`) which returns **all** tenant workspaces, while the Fabric Credential path uses `/v1/workspaces` which only returns workspaces you have access to. This may result in more activity events being captured in SP mode.
 
 ### Step 3 — Check What's Already Been Collected
 Before fetching anything, the notebook checks its existing data to see which days it has already collected. It only fetches the **missing days**. For example, if you ran it yesterday, it will only fetch today's events instead of re-fetching the full 28 days.
@@ -68,6 +78,10 @@ At the end, the notebook displays:
 - It does **not move or archive** anything
 - It does **not change** any settings or items
 - It is completely **read-only** — it only collects and stores activity history
+
+## Authentication Note
+
+The Service Principal path has tenant-wide visibility into activity events, which may return **more rows** than the Fabric Credential path. Both paths produce the same output schema and both use the same Activity Events API — the difference is in workspace name resolution coverage.
 
 ## How Long Does It Take?
 

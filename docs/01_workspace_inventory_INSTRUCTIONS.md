@@ -11,7 +11,32 @@ Before you can decide what's old and should be cleaned up, you need to know **wh
 ## How Does It Work? (Step by Step)
 
 ### Step 1 — Connect and List Workspaces
-The notebook connects to Microsoft Fabric using your Fabric account credentials and retrieves a list of **all workspaces** you have access to. This includes shared team workspaces as well as personal workspaces.
+The notebook connects to Microsoft Fabric and retrieves a list of **all workspaces**. It supports two authentication methods:
+
+- **Fabric Credential (default)** — Uses the signed-in user's identity. Returns workspaces your account has access to. Requires the **Fabric Administrator** role.
+- **Service Principal** — Uses an Entra ID App Registration with client credentials. Calls the Admin API (`/v1/admin/workspaces`) to list **all** tenant workspaces without needing per-workspace access.
+
+To use Fabric Credential mode, set `use_service_principal = False` in Cell 2 (this is the default — no other changes needed).
+
+To use Service Principal mode, set `use_service_principal = True` in Cell 2 and fill in `sp_tenant_id`, `sp_client_id`, `sp_client_secret`, and `sp_object_id`.
+
+### Step 1b — Bootstrap (Service Principal Only)
+When running in SP mode with `sp_object_id` set, the notebook automatically adds the Service Principal as a **Member** to every workspace in the tenant. This step runs each time the notebook executes in SP mode, so newly created workspaces are picked up on subsequent runs.
+
+**What it does:**
+- Lists all tenant workspaces using the SP's Fabric API token (Admin API)
+- Adds the SP as a **Member** to each workspace using the **signed-in user's identity** (Fabric credential) via the PBI Admin API
+- Workspaces where the SP is already a Member are automatically skipped
+
+**Why it's needed:**
+- The SP needs workspace-level membership to access lakehouse tables, files, and warehouse metadata via the Fabric REST API and OneLake DFS
+- The admin APIs (workspace listing, item listing, activity events) work via tenant settings alone, but sub-item discovery requires per-workspace access
+
+**Why it uses the signed-in user's token:**
+- The PBI Admin write API (`POST .../admin/groups/{id}/users`) requires tenant-admin privileges
+- The SP itself cannot call this endpoint without Power BI Service write permissions, which conflict with the Fabric REST API and cause 500 errors
+- So the bootstrap is a hybrid operation: the SP token reads the workspace list, and the user token writes the membership grants
+- The signed-in user must have the **Fabric Administrator** role
 
 ### Step 2 — Get Modification Dates (Two Sources)
 Getting accurate "last modified" dates in Fabric is tricky because **no single source has all the dates**. This notebook pulls from two different sources:
@@ -62,8 +87,12 @@ At the end, the notebook displays a summary showing:
 
 - It does **not delete** anything
 - It does **not move or archive** anything
-- It does **not change** any settings
+- It does **not change** any settings (except adding SP workspace membership during bootstrap)
 - It is completely **read-only** — it just looks and reports
+
+## Authentication Note
+
+The Service Principal path uses Admin APIs to bulk-fetch all workspaces and items tenant-wide, which may return **more results** than the Fabric Credential path (which only sees workspaces your user account has access to). Both paths produce the same output schema.
 
 ## How Long Does It Take?
 
