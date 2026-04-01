@@ -4,9 +4,16 @@
 
 ```mermaid
 flowchart LR
+    subgraph AUTH["AUTHENTICATION"]
+        direction TB
+        AU1["Fabric Credential\n(user identity)"]
+        AU2["Service Principal\n(SP + MSAL)"]
+    end
+
     subgraph APIS["DATA SOURCES (APIs)"]
         direction TB
         A1["Fabric REST API\n/v1/workspaces\n/v1/workspaces/{id}/items"]
+        A1A["Fabric Admin API\n/v1/admin/workspaces\n/v1/admin/items"]
         A2["PBI Admin Scanner\n/admin/workspaces/getInfo"]
         A3["Activity Events API\n/admin/activityevents\n(28-day window)"]
         A4["Lakehouse Tables API\n/v1/workspaces/{id}/lakehouses/{id}/tables"]
@@ -49,7 +56,10 @@ flowchart LR
         R2["Excel export:\nretention_readiness_report.xlsx"]
     end
 
+    AU1 --> A1
+    AU2 --> A1A
     A1 --> B1
+    A1A --> B1
     A2 --> B3
     A3 --> B3
     A3 --> C2
@@ -73,6 +83,7 @@ flowchart LR
     T5 --> R1
     T5 --> R2
 
+    style AUTH fill:#34495E,color:#fff
     style APIS fill:#4A90D9,color:#fff
     style NB01 fill:#2ECC71,color:#fff
     style NB02 fill:#F39C12,color:#fff
