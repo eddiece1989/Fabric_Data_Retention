@@ -20,7 +20,7 @@ To use Fabric Credential mode, set `use_service_principal = False` in Cell 2 (th
 
 To use Service Principal mode, set `use_service_principal = True` in Cell 2 and fill in `sp_tenant_id`, `sp_client_id`, `sp_client_secret`, and `sp_object_id`.
 
-### Step 1b — Bootstrap (Service Principal Only)
+### Step 4b — Bootstrap (Service Principal Only)
 When running in SP mode with `sp_object_id` set, the notebook automatically adds the Service Principal as a **Member** to every workspace in the tenant. This step runs each time the notebook executes in SP mode, so newly created workspaces are picked up on subsequent runs.
 
 **What it does:**
@@ -46,7 +46,7 @@ Getting accurate "last modified" dates in Fabric is tricky because **no single s
 - **Activity Events API** — This is a second Microsoft API that records user actions (like editing a notebook or updating a pipeline). The notebook looks at these activity records to determine when Fabric-native items (Notebooks, Pipelines, Lakehouses, etc.) were last modified. It only counts **real changes** — simply viewing or opening an item does not count as a modification.
 
 ### Step 3 — Set the Retention Period
-Before building the inventory, the notebook sets the **retention period** in Cell 4. This is the **single source of truth** for how many days an item can go without being modified before it's considered overdue. The default is **10 days** for demo purposes. You can customize retention per item type (e.g., 90 days for Reports, 180 days for Semantic Models) using the `RETENTION_DAYS_BY_TYPE` dictionary in that same cell.
+Before building the inventory, the notebook sets the **retention period** in Cell 4. This is the **single source of truth** for how many days an item can go without being modified before it's considered overdue. The default is **10 days** for demo purposes. You can customize retention per item type (e.g., 90 days for Reports, 180 days for Semantic Models) using the `RETENTION_DAYS_BY_TYPE` dictionary in that same cell. If a different artifact is identified in the retention_config table, it is optional to add it to cell #4 if you need a custom retention period.
 
 Notebook 03 reads this value from the inventory table — it does **not** have its own retention setting.
 
