@@ -57,7 +57,7 @@ lookback_days         = 28                           # API retention window (max
 
 # Set to True to re-fetch ALL days (drops existing raw table).
 # After running once with True, set back to False for incremental collection.
-force_refetch         = True
+force_refetch         = False
 
 # ── Service Principal Parameters (Option 1: SP + MSAL) ──
 # Set use_service_principal = True to authenticate via SP instead of user identity
